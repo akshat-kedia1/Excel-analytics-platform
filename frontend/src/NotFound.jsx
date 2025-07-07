@@ -17,7 +17,7 @@ export default function NotFound() {
         Oops! The page you’re looking for doesn’t exist or was moved.
       </p>
       <Link
-        to="/dashboard"
+        to="/login"
         className="px-6 py-3 bg-[#1E2939] text-white rounded-lg hover:bg-[#1E2939]/80 transition">
         Go Back Home
       </Link>

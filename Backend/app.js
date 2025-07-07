@@ -10,7 +10,10 @@ const morgan = require('morgan');
 app.use(express.json());
 
 connectToDb();
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:5173',
+  credentials: true
+}));
 app.use(morgan('dev')); 
 app.get('/',(req,res)=>{
     res.send('Hello World');
