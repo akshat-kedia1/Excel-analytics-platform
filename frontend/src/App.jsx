@@ -11,8 +11,9 @@ import UploadExcel from "./dashboardPages/subdasboard/UploadExcel";
 import History from "./dashboardPages/subdasboard/History";
 import Profile from "./dashboardPages/subdasboard/Profile";
 import NotFound from "./NotFound";
-import Login from './authPages/Login';
-import Signup from './authPages/Signup';
+import Login from "./authPages/Login";
+import Signup from "./authPages/Signup";
+import AnalyzeExcel from "./dashboardPages/subdasboard/AnalyzeExcel";
 
 function App() {
   return (
@@ -25,6 +26,7 @@ function App() {
           <Route path="upload-excel" element={<UploadExcel />} />
           <Route path="history" element={<History />} />
           <Route path="profile" element={<Profile />} />
+          <Route path="analyze" element={<AnalyzeExcel />} />
         </Route>
 
         {/* Catch-all 404 route */}
