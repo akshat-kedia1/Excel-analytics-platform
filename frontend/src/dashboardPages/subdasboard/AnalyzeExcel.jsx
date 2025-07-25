@@ -2,6 +2,7 @@ import React, { useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Line, Bar, Pie } from "react-chartjs-2";
 import jsPDF from "jspdf";
+import axios from "axios";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -35,15 +36,32 @@ export default function AnalyzeExcel() {
   const columns = excelData.length > 0 ? Object.keys(excelData[0]) : [];
 
   const [blocks, setBlocks] = useState([
-    { xColumn: "", yColumn: "", chartType: "line", enabled: true },
+    {
+      xColumn: "",
+      yColumn: "",
+      chartType: "line",
+      enabled: true,
+      name: "Graph #1",
+    },
   ]);
+
+  const [showModal, setShowModal] = useState(false);
+  const [projectName, setProjectName] = useState("");
+  const [projectDescription, setProjectDescription] = useState("");
 
   const chartRefs = useRef([React.createRef()]);
 
   const addBlock = () => {
+    const newIndex = blocks.length + 1;
     setBlocks([
       ...blocks,
-      { xColumn: "", yColumn: "", chartType: "line", enabled: true },
+      {
+        xColumn: "",
+        yColumn: "",
+        chartType: "line",
+        enabled: true,
+        name: `Graph #${newIndex}`,
+      },
     ]);
     chartRefs.current.push(React.createRef());
   };
@@ -67,8 +85,9 @@ export default function AnalyzeExcel() {
     if (ref?.current) {
       const base64 = ref.current.toBase64Image();
       const link = document.createElement("a");
+      const safeName = blocks[index].name || `chart-${index + 1}`;
       link.href = base64;
-      link.download = `chart-${index + 1}.png`;
+      link.download = `${safeName}.png`;
       link.click();
     }
   };
@@ -80,6 +99,7 @@ export default function AnalyzeExcel() {
     blocks.forEach((block, idx) => {
       if (block.enabled && chartRefs.current[idx]?.current) {
         const base64 = chartRefs.current[idx].current.toBase64Image();
+        pdf.text(block.name || `Graph #${idx + 1}`, 10, yOffset - 2);
         pdf.addImage(base64, "PNG", 10, yOffset, 180, 90);
         yOffset += 100;
         if (idx < blocks.length - 1) {
@@ -90,6 +110,43 @@ export default function AnalyzeExcel() {
     });
 
     pdf.save("selected-charts.pdf");
+  };
+
+  const handleSaveProject = async () => {
+    const enabledCharts = blocks.filter((b) => b.enabled);
+
+    const chartData = enabledCharts.map((block, index) => {
+      const base64 = chartRefs.current[index]?.current?.toBase64Image() || "";
+      return {
+        name: block.name,
+        chartType: block.chartType,
+        xAxis: block.xColumn,
+        yAxis: block.yColumn,
+        imageBase64: base64,
+      };
+    });
+
+    console.log(chartData);
+    try {
+      const response = await axios.post(
+        "http://localhost:4000/analyze/projects",
+        {
+          projectName,
+          projectDescription,
+          charts: chartData,
+        },
+        {
+          withCredentials: true,
+        }
+      );
+
+      console.log("Project saved:", response.data);
+      alert("Project saved successfully!");
+      setShowModal(false);
+    } catch (error) {
+      console.error("Error saving project:", error);
+      alert("Error saving project");
+    }
   };
 
   return (
@@ -152,6 +209,15 @@ export default function AnalyzeExcel() {
               />
               <span className="font-semibold">Graph #{index + 1}</span>
             </div>
+
+            <label className="block mb-2 font-semibold">Graph Name:</label>
+            <input
+              type="text"
+              className="border p-2 mb-4 w-full"
+              value={block.name}
+              onChange={(e) => updateBlock(index, "name", e.target.value)}
+              placeholder={`Graph #${index + 1}`}
+            />
 
             <label className="block mb-2 font-semibold">Select X-axis:</label>
             <select
@@ -228,11 +294,56 @@ export default function AnalyzeExcel() {
         <span className="text-xl mr-2">+</span> Add Graph
       </button>
 
-      <button
-        onClick={downloadPDF}
-        className="flex items-center px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 mx-auto">
-        📄 Download Selected as PDF
-      </button>
+      <div className="flex justify-center gap-4">
+        <button
+          onClick={downloadPDF}
+          className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700">
+          📄 Download Selected as PDF
+        </button>
+
+        <button
+          onClick={() => setShowModal(true)}
+          className="px-4 py-2 bg-green-700 text-white rounded hover:bg-green-800">
+          💾 Save Project
+        </button>
+      </div>
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white p-8 rounded shadow max-w-md w-full">
+            <h2 className="text-xl font-bold mb-4">Save Project</h2>
+
+            <label className="block mb-2 font-semibold">Project Name:</label>
+            <input
+              type="text"
+              className="border p-2 mb-4 w-full"
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+            />
+
+            <label className="block mb-2 font-semibold">Description:</label>
+            <textarea
+              className="border p-2 mb-4 w-full"
+              value={projectDescription}
+              onChange={(e) => setProjectDescription(e.target.value)}
+            />
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowModal(false)}
+                className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveProject}
+                className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
