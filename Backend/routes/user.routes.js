@@ -1,27 +1,35 @@
-const express = require('express');
+import express from 'express';
+import { body } from 'express-validator';
+import userController from '../controllers/user.controller.js';
+import authUser from '../middlewares/auth.middleware.js';
+
 const router = express.Router();
-const { body } = require('express-validator')
-const userController = require('../controllers/user.controller.js');
 
-router.post('/register', [
-  body('email').isEmail().withMessage('Invalid Email'),
-  body('fullname.firstname').isLength({ min: 3 }).withMessage('First Name must of atleast 3 characters'),
-  body('password').isLength({ min: 6 }).withMessage('Password must of atleast 6 characters'),
-
-],
-  userController.registerUser
-)
 router.post(
-  "/login",
+  '/register',
   [
-    body("email").isEmail().withMessage("Invalid Email"),
-    body("password")
+    body('email').isEmail().withMessage('Invalid Email'),
+    body('fullname.firstname')
+      .isLength({ min: 3 })
+      .withMessage('First Name must be at least 3 characters'),
+    body('password')
       .isLength({ min: 6 })
-      .withMessage("Password must of atleast 6 characters"),
+      .withMessage('Password must be at least 6 characters'),
+  ],
+  userController.registerUser
+);
+
+router.post(
+  '/login',
+  [
+    body('email').isEmail().withMessage('Invalid Email'),
+    body('password')
+      .isLength({ min: 6 })
+      .withMessage('Password must be at least 6 characters'),
   ],
   userController.loginUser
 );
 
+router.get('/profile', authUser, userController.getUserProfile);
 
-
-module.exports = router;
+export default router;
