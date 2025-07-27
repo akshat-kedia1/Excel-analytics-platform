@@ -1,6 +1,6 @@
-const userModel = require('../models/user.model');
+import userModel from '../models/user.model.js';
 
-module.exports.createUser = async ({ firstname, lastname, email, password }) => {
+const createUser = async ({ firstname, lastname, email, password }) => {
     const user = await userModel.create({
         fullname: {
             firstname,
@@ -8,6 +8,8 @@ module.exports.createUser = async ({ firstname, lastname, email, password }) => 
         },
         email,
         password,
-    })
+    });
     return user;
-}
+};
+
+export default createUser;

@@ -8,23 +8,28 @@ import {
 
 import UserDashboard from "./dashboardPages/UserDashboard";
 import UploadExcel from "./dashboardPages/subdasboard/UploadExcel";
-import History from "./dashboardPages/subdasboard/History";
+import MyProjects from "./dashboardPages/subdasboard/MyProjects";
 import Profile from "./dashboardPages/subdasboard/Profile";
 import NotFound from "./NotFound";
 import Login from "./authPages/Login";
 import Signup from "./authPages/Signup";
 import AnalyzeExcel from "./dashboardPages/subdasboard/AnalyzeExcel";
+import ViewProject from "./dashboardPages/subdasboard/ViewProject";
 
 function App() {
   return (
     <Router>
       <Routes>
         {/* Redirect from '/' to '/dashboard' */}
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route
+          path="/"
+          element={<Navigate to="/dashboard/upload-excel" replace />}
+        />
 
         <Route path="/dashboard" element={<UserDashboard />}>
           <Route path="upload-excel" element={<UploadExcel />} />
-          <Route path="history" element={<History />} />
+          <Route path="my-projects" element={<MyProjects />} />
+          <Route path="my-projects/:projectId" element={<ViewProject />} />
           <Route path="profile" element={<Profile />} />
           <Route path="analyze" element={<AnalyzeExcel />} />
         </Route>

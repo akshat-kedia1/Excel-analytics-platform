@@ -1,5 +1,5 @@
-import React, { useState, useRef } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import React, { useState, useEffect, useRef } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { Line, Bar, Pie } from "react-chartjs-2";
 import jsPDF from "jspdf";
 import axios from "axios";
@@ -20,8 +20,8 @@ import {
   faPlus,
   faDownload,
   faSave,
-  faTimes,
   faArrowLeft,
+  faTimes,
 } from "@fortawesome/free-solid-svg-icons";
 
 ChartJS.register(
@@ -39,36 +39,58 @@ ChartJS.register(
 const buttonStyle =
   "bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded transition duration-300 ease-in-out";
 const inputStyle =
-  "mt-1 block w-full h-8 px-2 py-1 rounded-md border border-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm";
-
+  "mt-1 block w-full h-8 px-2 py-1 rounded-md border border-gray-200 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm";
 const labelStyle = "block text-sm font-medium text-gray-700";
 const containerStyle = "container mx-auto mt-10 p-6 bg-white rounded";
 const blockContainerStyle =
   "bg-white rounded shadow p-4 mb-6 border border-gray-200";
 
-export default function AnalyzeExcel() {
+export default function ViewProject() {
+  const { projectId } = useParams();
   const navigate = useNavigate();
-  const location = useLocation();
-  const excelData = location.state?.data || [];
 
-  const columns = excelData.length > 0 ? Object.keys(excelData[0]) : [];
-  console.log(excelData);
-
-  const [blocks, setBlocks] = useState([
-    {
-      xColumn: "",
-      yColumn: "",
-      chartType: "line",
-      enabled: true,
-      name: "Graph #1",
-    },
-  ]);
-
+  const [project, setProject] = useState(null);
+  const [blocks, setBlocks] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [projectName, setProjectName] = useState("");
   const [projectDescription, setProjectDescription] = useState("");
 
-  const chartRefs = useRef([React.createRef()]);
+  const chartRefs = useRef([]);
+
+  useEffect(() => {
+    const fetchProject = async () => {
+      try {
+        const res = await axios.get(
+          `http://localhost:4000/analyze/projects/${projectId}`,
+          {
+            withCredentials: true,
+          }
+        );
+        setProject(res.data.project);
+
+        // Load saved charts into blocks
+        const savedBlocks = res.data.project.charts.map((chart) => ({
+          name: chart.name,
+          chartType: chart.chartType,
+          xColumn: chart.xAxis,
+          yColumn: chart.yAxis,
+          enabled: true,
+          imageUrl: chart.imageUrl, // for fallback preview
+        }));
+        setBlocks(savedBlocks);
+
+        chartRefs.current = savedBlocks.map(() => React.createRef());
+
+        setProjectName(res.data.project.fileName || "");
+        setProjectDescription(res.data.project.description || "");
+      } catch (err) {
+        console.error(err);
+        alert("Failed to load project");
+      }
+    };
+
+    fetchProject();
+  }, [projectId]);
 
   const addBlock = () => {
     const newIndex = blocks.length + 1;
@@ -108,6 +130,12 @@ export default function AnalyzeExcel() {
       link.href = base64;
       link.download = `${safeName}.png`;
       link.click();
+    } else if (blocks[index].imageUrl) {
+      // fallback: download saved imageUrl from Cloudinary
+      const link = document.createElement("a");
+      link.href = blocks[index].imageUrl;
+      link.download = `${blocks[index].name}.png`;
+      link.click();
     }
   };
 
@@ -116,10 +144,16 @@ export default function AnalyzeExcel() {
     let yOffset = 10;
 
     blocks.forEach((block, idx) => {
-      if (block.enabled && chartRefs.current[idx]?.current) {
-        const base64 = chartRefs.current[idx].current.toBase64Image();
-        pdf.text(block.name || `Graph #${idx + 1}`, 10, yOffset - 2);
-        pdf.addImage(base64, "PNG", 10, yOffset, 180, 90);
+      if (block.enabled) {
+        if (chartRefs.current[idx]?.current) {
+          const base64 = chartRefs.current[idx].current.toBase64Image();
+          pdf.text(block.name || `Graph #${idx + 1}`, 10, yOffset - 2);
+          pdf.addImage(base64, "PNG", 10, yOffset, 180, 90);
+        } else if (block.imageUrl) {
+          // fallback for saved chart image
+          pdf.text(block.name || `Graph #${idx + 1}`, 10, yOffset - 2);
+          pdf.addImage(block.imageUrl, "PNG", 10, yOffset, 180, 90);
+        }
         yOffset += 100;
         if (idx < blocks.length - 1) {
           pdf.addPage();
@@ -128,24 +162,28 @@ export default function AnalyzeExcel() {
       }
     });
 
-    pdf.save("selected-charts.pdf");
+    pdf.save(`${projectName || "project"}.pdf`);
   };
 
   const handleSaveProject = async () => {
     const enabledCharts = blocks.filter((b) => b.enabled);
 
-    const chartData = enabledCharts.map((block, index) => {
-      const base64 = chartRefs.current[index]?.current?.toBase64Image() || "";
-      return {
-        name: block.name,
-        chartType: block.chartType,
-        xAxis: block.xColumn,
-        yAxis: block.yColumn,
-        imageBase64: base64,
-      };
-    });
+    const chartData = await Promise.all(
+      enabledCharts.map(async (block, index) => {
+        let base64 = "";
+        if (chartRefs.current[index]?.current) {
+          base64 = chartRefs.current[index].current.toBase64Image();
+        }
+        return {
+          name: block.name,
+          chartType: block.chartType,
+          xAxis: block.xColumn,
+          yAxis: block.yColumn,
+          imageBase64: base64,
+        };
+      })
+    );
 
-    console.log(chartData);
     try {
       const response = await axios.post(
         "http://localhost:4000/analyze/projects",
@@ -153,7 +191,6 @@ export default function AnalyzeExcel() {
           projectName,
           projectDescription,
           charts: chartData,
-          rows: excelData,
         },
         {
           withCredentials: true,
@@ -175,9 +212,10 @@ export default function AnalyzeExcel() {
     { value: "pie", label: "Pie" },
   ];
 
+  const columns = project?.rows?.length > 0 ? Object.keys(project.rows[0]) : [];
+
   return (
     <div className={containerStyle + " h-[90vh] flex flex-col"}>
-      {/* Sticky Top Controls */}
       <div className="sticky top-0 z-20 bg-white pb-2 mb-2 flex flex-col gap-2">
         <button
           onClick={() => navigate(-1)}
@@ -185,10 +223,11 @@ export default function AnalyzeExcel() {
           <FontAwesomeIcon icon={faArrowLeft} className="mr-2" />
           Back
         </button>
+
         <h1 className="text-3xl font-semibold text-gray-800 mb-2">
-          Analyze Your Excel Data
+          {projectName || "Project"}
         </h1>
-        {/* Project Actions */}
+
         <div className="flex flex-wrap gap-2 justify-center mb-2">
           <button onClick={downloadPDF} className={buttonStyle}>
             <FontAwesomeIcon icon={faDownload} className="mr-2" />
@@ -205,12 +244,11 @@ export default function AnalyzeExcel() {
         </div>
       </div>
 
-      {/* Scrollable Chart Blocks */}
       <div className="flex-1 overflow-y-auto pr-2" style={{ minHeight: 0 }}>
         {blocks.map((block, index) => {
-          const labels = excelData.map((row) => row[block.xColumn]) || [];
+          const labels = project?.rows?.map((row) => row[block.xColumn]) || [];
           const values =
-            excelData.map((row) => Number(row[block.yColumn])) || [];
+            project?.rows?.map((row) => Number(row[block.yColumn])) || [];
 
           const chartData = {
             labels,
@@ -218,7 +256,6 @@ export default function AnalyzeExcel() {
               {
                 label: `${block.yColumn} vs ${block.xColumn}`,
                 data: values,
-                fill: false,
                 backgroundColor: [
                   "#60a5fa",
                   "#34d399",
@@ -240,20 +277,15 @@ export default function AnalyzeExcel() {
             plugins: {
               legend: {
                 position: "top",
-                align: "center",
                 labels: {
-                  font: {
-                    size: 14,
-                  },
+                  font: { size: 14 },
                   color: "#333",
                 },
               },
               title: {
                 display: true,
                 text: block.name || `Graph #${index + 1}`,
-                font: {
-                  size: 16,
-                },
+                font: { size: 16 },
                 color: "#555",
               },
             },
@@ -262,15 +294,11 @@ export default function AnalyzeExcel() {
                 title: {
                   display: true,
                   text: block.xColumn,
-                  font: {
-                    size: 14,
-                  },
+                  font: { size: 14 },
                   color: "#555",
                 },
                 ticks: {
-                  font: {
-                    size: 12,
-                  },
+                  font: { size: 12 },
                   color: "#444",
                 },
               },
@@ -278,15 +306,11 @@ export default function AnalyzeExcel() {
                 title: {
                   display: true,
                   text: block.yColumn,
-                  font: {
-                    size: 14,
-                  },
+                  font: { size: 14 },
                   color: "#555",
                 },
                 ticks: {
-                  font: {
-                    size: 12,
-                  },
+                  font: { size: 12 },
                   color: "#444",
                 },
               },
@@ -295,46 +319,34 @@ export default function AnalyzeExcel() {
 
           return (
             <div key={index} className={blockContainerStyle}>
-              {/* Graph Header */}
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center">
                   <input
                     type="checkbox"
-                    id={`enabled-${index}`}
                     checked={block.enabled}
                     onChange={() => toggleEnabled(index)}
                     className="mr-2 h-5 w-5 text-indigo-600 rounded focus:ring-indigo-500"
                   />
-                  <label
-                    htmlFor={`enabled-${index}`}
-                    className="text-lg font-medium text-gray-700">
-                    {block.name || `Graph #${index + 1}`}
-                  </label>
+                  <span className="text-lg font-medium text-gray-700">
+                    {block.name}
+                  </span>
                 </div>
               </div>
 
-              {/* Graph Configuration */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor={`name-${index}`} className={labelStyle}>
-                    Graph Name:
-                  </label>
+                  <label className={labelStyle}>Graph Name:</label>
                   <input
                     type="text"
-                    id={`name-${index}`}
                     className={inputStyle}
                     value={block.name}
                     onChange={(e) => updateBlock(index, "name", e.target.value)}
-                    placeholder={`Graph #${index + 1}`}
                   />
                 </div>
 
                 <div>
-                  <label htmlFor={`xColumn-${index}`} className={labelStyle}>
-                    Select X-axis:
-                  </label>
+                  <label className={labelStyle}>Select X-axis:</label>
                   <select
-                    id={`xColumn-${index}`}
                     className={inputStyle}
                     value={block.xColumn}
                     onChange={(e) =>
@@ -350,11 +362,8 @@ export default function AnalyzeExcel() {
                 </div>
 
                 <div>
-                  <label htmlFor={`yColumn-${index}`} className={labelStyle}>
-                    Select Y-axis:
-                  </label>
+                  <label className={labelStyle}>Select Y-axis:</label>
                   <select
-                    id={`yColumn-${index}`}
                     className={inputStyle}
                     value={block.yColumn}
                     onChange={(e) =>
@@ -370,11 +379,8 @@ export default function AnalyzeExcel() {
                 </div>
 
                 <div>
-                  <label htmlFor={`chartType-${index}`} className={labelStyle}>
-                    Select Chart Type:
-                  </label>
+                  <label className={labelStyle}>Select Chart Type:</label>
                   <select
-                    id={`chartType-${index}`}
                     className={inputStyle}
                     value={block.chartType}
                     onChange={(e) =>
@@ -389,7 +395,6 @@ export default function AnalyzeExcel() {
                 </div>
               </div>
 
-              {/* Chart Display */}
               {block.xColumn && block.yColumn && (
                 <div className="mt-6">
                   <div style={{ height: "300px", position: "relative" }}>
@@ -408,11 +413,7 @@ export default function AnalyzeExcel() {
                       />
                     )}
                     {block.chartType === "pie" && (
-                      <Pie
-                        ref={chartRefs.current[index]}
-                        data={chartData}
-                        options={chartOptions}
-                      />
+                      <Pie ref={chartRefs.current[index]} data={chartData} />
                     )}
                   </div>
 
@@ -429,7 +430,6 @@ export default function AnalyzeExcel() {
         })}
       </div>
 
-      {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
           <div className="bg-white p-8 rounded shadow-lg max-w-md w-full">
@@ -444,24 +444,16 @@ export default function AnalyzeExcel() {
               </button>
             </div>
 
-            <label htmlFor="projectName" className={labelStyle}>
-              Project Name:
-            </label>
+            <label className={labelStyle}>Project Name:</label>
             <input
               type="text"
-              id="projectName"
               className={inputStyle}
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
             />
 
-            <label
-              htmlFor="projectDescription"
-              className={labelStyle + " mt-4"}>
-              Description:
-            </label>
+            <label className={labelStyle + " mt-4"}>Description:</label>
             <textarea
-              id="projectDescription"
               className={inputStyle}
               style={{ minHeight: "100px", height: "140px" }}
               value={projectDescription}
